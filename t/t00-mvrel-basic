@@ -74,6 +74,15 @@ basic_dirs () {
     mvrel foo baz
     streq $(readlink baz/foo/bar) "../../bar"
     streq $(readlink baz/foo/qux) "flob"
+
+    # move the directory higher
+    mvrel baz/foo .
+    streq $(readlink foo/bar) "../bar"
+
+    # put it back
+    mvrel foo baz
+
+    # multiple levels (XXX should test this more)
     mkdir joe
     mvrel baz joe
     streq $(readlink joe/baz/foo/bar) "../../../bar"
