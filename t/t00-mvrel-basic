@@ -22,7 +22,7 @@ streq () {
 
 TMPD=
 setup () {
-    export PATH=$(dirname $0):$PATH
+    export PATH=$(dirname $0)"/..":$PATH
 
     TMPD=$(mktemp -d trash-t-mvrel.XXXXXX --tmpdir)
     if [ $BATS_TEST_NUMBER = 1 ]; then
