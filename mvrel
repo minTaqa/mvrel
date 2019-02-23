@@ -1,0 +1,113 @@
+#!/bin/bash
+
+# Move a directory containing relative symbolic links, preserving the
+# referent of each link
+
+# Usage:
+# mvrel src dst/
+
+# It should work even if filenames contain newlines and other
+# characters.
+
+# Written 23 Feb 2019
+
+# This was an interesting project which also helped me experiment with
+# Bats, the Bash TAP-compliant testing framework. Bats made it much
+# easier to catch various bugs. There may still be bugs!
+
+# Answering https://unix.stackexchange.com/questions/485320/what-is-a-good-command-for-moving-a-directory-containing-relative-symbolic-links
+
+set -e
+
+die () { >&2 echo "$@"; exit 1; }
+
+if test "$#" -ne 2; then
+    die Need two arguments
+fi
+
+# Comment or uncomment these to change verbosity
+dbg () { true; }
+#dbg () { >&2 echo "$@"; }
+verb () { >&2 echo "$@"; }
+
+# Helper. Command substitution, without deleting trailing newlines.
+# To delete exactly N trailing newlines, pass -N as first argument
+# See https://stackoverflow.com/questions/613572/capturing-multiple-line-output-into-a-bash-variable
+# and https://raw.githubusercontent.com/l0b0/tilde/master/examples/safe-find.sh
+cmd2var () {
+    COUNT=0
+    if [[ "$1" = -* ]]; then
+        COUNT="${1#-}"; shift
+    fi
+    VAR=$1; shift
+    IFS= read -rd '' $VAR < <( "$@" ) || true
+    while [[ $COUNT -gt 0 ]]; do
+        declare -g $VAR="${!VAR%$'\n'}"
+        COUNT=$((COUNT-1))
+    done
+}
+
+# The command arguments
+SRC=$1
+DST=$2
+cmd2var -1 NEWSRC basename -- "$SRC"
+NEWSRC="$DST/$NEWSRC"
+dbg SRC=$SRC
+dbg DST=$DST
+dbg NEWSRC=$NEWSRC
+
+if ! test -d "$DST"; then
+    die Second argument must be directory
+fi
+if ! test -e "$SRC"; then
+    die Source SRC does not exist
+fi
+
+cmd2var -1 SRCR realpath -s -- "$SRC"
+cmd2var -1 DSTR realpath -s -- "$DST"
+
+if [[ "$DSTR" = "$SRCR"* ]]; then
+    die Can\'t move directory into itself
+fi
+
+NEWBASE="$NEWSRC"
+# Handle case where source is symlink, in which case the new base is
+# dirname of NEWSRC
+if test -L "$SRCR"; then
+    dbg Source is symlink
+    # source is a link, use dirname instead
+    cmd2var -1 NEWBASE dirname "$NEWSRC"
+fi
+
+# Helper function. realpath seems to lack an argument to specify the
+# base for relative paths, so we have to do "cd"
+realpath_base () {
+    (cd "$1";
+    realpath -s -m -- "$2")
+}
+
+verb Rewriting links
+# Rewrite all the links before moving
+find "$SRCR" -type l -print0 | while IFS= read -r -d '' i; do
+    # readlink -f worked OK but we actually want to allow linking to a
+    # symlink; in such cases it should only be dereferenced once, but
+    # readlink -f dereferences the entire chain. so we use readlink +
+    # realpath_base
+#    cmd2var -1 RP readlink -f -- "$i"
+    cmd2var -1 di dirname -- "$i"
+    cmd2var -1 RL readlink -- "$i"
+    cmd2var -1 RP realpath_base "$di" "$RL"
+    if [[ "$RP" = "$SRCR"* ]]; then
+        dbg Under src
+    else
+        # need to strip first part of RP and use dirname after NEWBASE
+        # also use realpath -s and $RP below, not $i
+        cmd2var -1 PATHINSRC dirname "${i#"$SRCR"}"
+        cmd2var -1 NEWLINK realpath -s -m --relative-to "$NEWBASE$PATHINSRC" -- "$RP"
+        dbg Outside SRC, rewriting $i as $NEWLINK
+        ln -sf -- "$NEWLINK" "$i"
+    fi
+done
+
+verb Moving $SRC to $DST
+mv -- "$SRC" "$DST"
