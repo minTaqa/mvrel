@@ -86,6 +86,20 @@ basic_dirs () {
     mkdir joe
     mvrel baz joe
     streq $(readlink joe/baz/foo/bar) "../../../bar"
+
+    # moving to ..
+    ln -sr joe joe/baz/tom
+    cd joe
+    touch bob
+    ln -sr bob baz/fred
+    mvrel baz ..
+    streq $(readlink ../baz/foo/bar) "../../bar"
+    streq $(readlink ../baz/fred) "../joe/bob"
+    # XXX it is unclear what this should do, tom is a link to the
+    # parent directory of baz, which has changed
+#    streq $(readlink ../baz/tom) "../joe"
+    streq $(readlink ../baz/tom) ".."
+
     rm -rf baz joe bar
 }
 
@@ -103,6 +117,8 @@ basic_dirs () {
 }
 
 strange_dirs_test () {
+    # XXX expand this with some of the other tests, e.g. "fails on bad
+    # arguments" and "test moving a symlink"
     FOO=${1:-foo}
     BAR=${2:-bar}
     BAZ=${3:-baz}
@@ -146,4 +162,3 @@ strange_dirs_test () {
 teardown () {
     rm -rf $TMPD
 }
-
