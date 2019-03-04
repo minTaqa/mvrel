@@ -3,35 +3,13 @@
 
 # 22 Feb 2019
 
-browser () {
-    # ad libitum
-    urxvt -e bash >/dev/null 2>&1
-}
-
-streq () {
-    if test "x$1" = "x$2"; then true
-    else >&2 echo streq: "$1" was not equal to "$2"; false
-    fi
-}
+load testlib-common
 
 # TODO
 # \- now test single link
 # \- test strange characters
 # - test (implement) destination not directory
 # - test (implement) multiple sources
-
-TMPD=
-setup () {
-    export PATH=$(dirname $0)"/..":$PATH
-
-    TMPD=$(mktemp -d trash-t-mvrel.XXXXXX --tmpdir)
-    if [ $BATS_TEST_NUMBER = 1 ]; then
-        # tell user how to clean up
-        >&3 echo "Writing to $TMPD"
-        >&3 echo "Using "$(which mvrel)
-    fi
-    cd $TMPD
-}
 
 basic_dirs () {
     mkdir foo
@@ -95,10 +73,7 @@ basic_dirs () {
     mvrel baz ..
     streq $(readlink ../baz/foo/bar) "../../bar"
     streq $(readlink ../baz/fred) "../joe/bob"
-    # XXX it is unclear what this should do, tom is a link to the
-    # parent directory of baz, which has changed
-#    streq $(readlink ../baz/tom) "../joe"
-    streq $(readlink ../baz/tom) ".."
+    streq $(readlink ../baz/tom) "../joe"
 
     rm -rf baz joe bar
 }
@@ -156,9 +131,4 @@ strange_dirs_test () {
     str=$'--$`!*@\a\b\E\f\r\t\v\\\'"\360\240\202\211 \n'
     strange_dirs_test "--foo$str" "--bar$str" "--baz$str" "--flob$str" "--qux$str"
     strange_dirs_test "*F:OO&"$'\n'"\n*" "-&&b&*ar"$'\n'"&&%^\$" "-baz\\a:z"$'\n\n' "-&fl\nob" "-Q:*:UX"$'\n'
-}
-
-
-teardown () {
-    rm -rf $TMPD
 }

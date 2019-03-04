@@ -1,0 +1,19 @@
+#!/usr/bin/bats --tap
+# -*- mode: sh; -*-
+
+# 03 Mar 2019
+
+# Exhibit bug caused by not using "-T" option to ln in mvrel:
+#         ln -sfT -- "$NEWLINK" "$i"
+
+# bats "source" helper
+load testlib-common
+
+@test "link to directory" {
+    mkdir -p a/b/c
+    mkdir -p e/d
+    cd a
+    ln -sr ../e/d .
+    mvrel d b
+    streq $(readlink b/d) "../../e/d"
+}

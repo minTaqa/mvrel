@@ -105,7 +105,7 @@ find "$SRCR" -type l -print0 | while IFS= read -r -d '' i; do
         cmd2var -1 PATHINSRC dirname "${i#"$SRCR"}"
         cmd2var -1 NEWLINK realpath -s -m --relative-to "$NEWBASE$PATHINSRC" -- "$RP"
         dbg Outside SRC, rewriting $i as $NEWLINK
-        ln -sf -- "$NEWLINK" "$i"
+        ln -sfT -- "$NEWLINK" "$i"
     fi
 done
 
