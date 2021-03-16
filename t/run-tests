@@ -1,0 +1,34 @@
+#!/bin/zsh
+# 16 Mar 2021
+# Originally from OAP?
+
+# This is in lieu of "bats ." (which runs ./*.bats)
+
+# Tries to be a little more useful by naming the tests that failed and
+# telling user what to do next (how to rerun script)
+
+cd $(dirname $(realpath $0))
+
+if [[ $# -gt 0 ]]; then
+  tests="${(j: :)@}"
+  >&2 echo Running tests: $tests
+else
+  >&2 echo Running tests in $PWD
+fi
+
+# 16 Mar 2021 (*) means executable. change the next line if you don't
+# want to require test scripts to be named t00-*
+: ${tests:=$(print -l t??-*(*) | grep -v '~$')}
+for t in ${=tests}; do
+  >&2 echo Running $t;
+  ./$t || failed+=$t
+done
+
+if [[ -n "$failed" ]]; then
+  >&2 echo "The following test failed: $failed"
+  >&2 echo "Rerun with:"
+  >&2 echo "$0 $failed"
+  exit 1
+else
+  >&2 echo "All tests succeeded"
+fi
