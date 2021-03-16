@@ -1,0 +1,31 @@
+#!/usr/bin/bats --tap
+# -*- mode: sh; -*-
+# 15 Mar 2021
+
+load testlib-common
+
+basic_dirs () {
+    mkdir foo
+    ln -sr x foo/xl
+    (cd foo
+      ln -sr ../t tl)
+}
+
+@test "moving link from parent directory" {
+  basic_dirs
+  cd foo
+  mvrel tl ..
+  mvrel xl ..
+  cd ..
+  streq "$(readlink -- tl)" "t"
+  streq "$(readlink -- xl)" "x"
+}
+
+@test "moving link from child directory" {
+  basic_dirs
+  mvrel foo/tl .
+  mvrel foo/xl .
+  streq "$(readlink -- tl)" "t"
+  streq "$(readlink -- xl)" "x"
+}
+

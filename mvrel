@@ -62,7 +62,12 @@ if ! test -d "$DST"; then
     die Second argument must be directory
 fi
 if ! test -e "$SRC"; then
-    die Source SRC does not exist
+  # 15 Mar 2021 is this the right logic?
+  if test -L "$SRC"; then
+    >&2 echo Warning: Source $SRC is a broken symlink
+  else
+    die Source $SRC does not exist
+  fi
 fi
 
 cmd2var -1 SRCR realpath -s -- "$SRC"
@@ -103,10 +108,13 @@ find "$SRCR" -type l -print0 | while IFS= read -r -d '' i; do
         dbg Under src
     else
         # need to strip first part of RP and use dirname after NEWBASE
-        # also use realpath -s and $RP below, not $i
-        cmd2var -1 PATHINSRC dirname "${i#"$SRCR"}"
-        cmd2var -1 NEWLINK realpath -s -m --relative-to "$NEWBASE$PATHINSRC" -- "$RP"
-        dbg Outside SRC, rewriting $i as $NEWLINK
+      # also use realpath -s and $RP below, not $i
+      cmd2var -1 PATHINSRC dirname "${i#"$SRCR"}"
+
+      # 16 Mar 2021 had to insert "/" between $NEWBASE and
+      # $PATHINSRC below in case both are "." (t02-mvrel-up)
+      cmd2var -1 NEWLINK realpath -s -m --relative-to "$NEWBASE/$PATHINSRC" -- "$RP"
+      dbg Outside SRC, rewriting $i as $NEWLINK
         # -T makes it work if $i is directory
         ln -sfT -- "$NEWLINK" "$i"
     fi
