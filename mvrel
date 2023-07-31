@@ -17,12 +17,16 @@
 
 # Answering https://unix.stackexchange.com/questions/485320/what-is-a-good-command-for-moving-a-directory-containing-relative-symbolic-links
 
+# 31 Jul 2023
+
+# Add support for multiple source files (more than two arguments)
+
 set -e
 
 die () { >&2 echo "$@"; exit 1; }
 
-if test "$#" -ne 2; then
-    die Need two arguments
+if test "$#" -lt 2; then
+    die Need at least two arguments
 fi
 
 # Comment or uncomment these to change verbosity
@@ -49,76 +53,84 @@ cmd2var () {
     done
 }
 
-# The command arguments
-SRC=$1
-DST=$2
-cmd2var -1 NEWSRC basename -- "$SRC"
-NEWSRC="$DST/$NEWSRC"
-dbg SRC=$SRC
-dbg DST=$DST
-dbg NEWSRC=$NEWSRC
+mv_one () {
+  # The command arguments
+  SRC=$1
+  DST=$2
+  cmd2var -1 NEWSRC basename -- "$SRC"
+  NEWSRC="$DST/$NEWSRC"
+  dbg SRC=$SRC
+  dbg DST=$DST
+  dbg NEWSRC=$NEWSRC
 
-if ! test -d "$DST"; then
+  if ! test -d "$DST"; then
     die Second argument must be directory
-fi
-if ! test -e "$SRC"; then
-  # 15 Mar 2021 is this the right logic?
-  if test -L "$SRC"; then
-    >&2 echo Warning: Source $SRC is a broken symlink
-  else
-    die Source $SRC does not exist
   fi
-fi
+  if ! test -e "$SRC"; then
+    # 15 Mar 2021 is this the right logic?
+    if test -L "$SRC"; then
+      >&2 echo Warning: Source $SRC is a broken symlink
+    else
+      die Source $SRC does not exist
+    fi
+  fi
 
-cmd2var -1 SRCR realpath -s -- "$SRC"
-cmd2var -1 DSTR realpath -s -- "$DST"
+  cmd2var -1 SRCR realpath -s -- "$SRC"
+  cmd2var -1 DSTR realpath -s -- "$DST"
 
-if [[ "$DSTR" = "$SRCR"* ]]; then
+  if [[ "$DSTR" = "$SRCR"* ]]; then
     die Can\'t move directory into itself
-fi
+  fi
 
-NEWBASE="$NEWSRC"
-# Handle case where source is symlink, in which case the new base is
-# dirname of NEWSRC
-if test -L "$SRCR"; then
+  NEWBASE="$NEWSRC"
+  # Handle case where source is symlink, in which case the new base is
+  # dirname of NEWSRC
+  if test -L "$SRCR"; then
     dbg Source is symlink
     # source is a link, use dirname instead
     cmd2var -1 NEWBASE dirname "$NEWSRC"
-fi
+  fi
 
-# Helper function. realpath seems to lack an argument to specify the
-# base for relative paths, so we have to do "cd"
-realpath_base () {
+  # Helper function. realpath seems to lack an argument to specify the
+  # base for relative paths, so we have to do "cd"
+  realpath_base () {
     (cd "$1";
-    realpath -s -m -- "$2")
+      realpath -s -m -- "$2")
+  }
+
+  verb Rewriting links
+  # Rewrite all the links before moving
+  find "$SRCR" -type l -print0 | while IFS= read -r -d '' i; do
+  # readlink -f worked OK but we actually want to allow linking to a
+  # symlink; in such cases it should only be dereferenced once, but
+  # readlink -f dereferences the entire chain. so we use readlink +
+  # realpath_base
+  #    cmd2var -1 RP readlink -f -- "$i"
+  cmd2var -1 di dirname -- "$i"
+  cmd2var -1 RL readlink -- "$i"
+  cmd2var -1 RP realpath_base "$di" "$RL"
+  if [[ "$RP" = "$SRCR"* ]]; then
+    dbg Under src
+  else
+    # need to strip first part of RP and use dirname after NEWBASE
+    # also use realpath -s and $RP below, not $i
+    cmd2var -1 PATHINSRC dirname "${i#"$SRCR"}"
+
+    # 16 Mar 2021 had to insert "/" between $NEWBASE and
+    # $PATHINSRC below in case both are "." (t02-mvrel-up)
+    cmd2var -1 NEWLINK realpath -s -m --relative-to "$NEWBASE/$PATHINSRC" -- "$RP"
+    dbg Outside SRC, rewriting $i as $NEWLINK
+    # -T makes it work if $i is directory
+    ln -sfT -- "$NEWLINK" "$i"
+  fi
+  done
+
+  verb Moving $SRC to $DST
+  mv -- "$SRC" "$DST"
 }
 
-verb Rewriting links
-# Rewrite all the links before moving
-find "$SRCR" -type l -print0 | while IFS= read -r -d '' i; do
-    # readlink -f worked OK but we actually want to allow linking to a
-    # symlink; in such cases it should only be dereferenced once, but
-    # readlink -f dereferences the entire chain. so we use readlink +
-    # realpath_base
-#    cmd2var -1 RP readlink -f -- "$i"
-    cmd2var -1 di dirname -- "$i"
-    cmd2var -1 RL readlink -- "$i"
-    cmd2var -1 RP realpath_base "$di" "$RL"
-    if [[ "$RP" = "$SRCR"* ]]; then
-        dbg Under src
-    else
-        # need to strip first part of RP and use dirname after NEWBASE
-      # also use realpath -s and $RP below, not $i
-      cmd2var -1 PATHINSRC dirname "${i#"$SRCR"}"
-
-      # 16 Mar 2021 had to insert "/" between $NEWBASE and
-      # $PATHINSRC below in case both are "." (t02-mvrel-up)
-      cmd2var -1 NEWLINK realpath -s -m --relative-to "$NEWBASE/$PATHINSRC" -- "$RP"
-      dbg Outside SRC, rewriting $i as $NEWLINK
-        # -T makes it work if $i is directory
-        ln -sfT -- "$NEWLINK" "$i"
-    fi
+dst="${@:$#}"
+for src in "${@:1:$#-1}"; do
+  mv_one "$src" "$dst"
 done
 
-verb Moving $SRC to $DST
-mv -- "$SRC" "$DST"

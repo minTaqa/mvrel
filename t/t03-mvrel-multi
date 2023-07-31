@@ -1,0 +1,38 @@
+#!/usr/bin/bats --tap
+# -*- mode: sh; -*-
+# 31 Jul 2023
+
+load testlib-common
+
+basic_dirs () {
+    mkdir foo
+    ln -sr x foo/xl
+    ln -sr y foo/yl
+    (cd foo
+      ln -sr ../t tl)
+}
+
+@test "moving link from parent directory" {
+  basic_dirs
+  cd foo
+  mvrel tl xl ..
+  cd ..
+  streq "$(readlink -- tl)" "t"
+  streq "$(readlink -- xl)" "x"
+}
+
+@test "moving link from child directory" {
+  basic_dirs
+  mvrel foo/tl foo/xl .
+  streq "$(readlink -- tl)" "t"
+  streq "$(readlink -- xl)" "x"
+}
+
+@test "move three links" {
+  basic_dirs
+  mvrel foo/tl foo/xl foo/yl .
+  streq "$(readlink -- tl)" "t"
+  streq "$(readlink -- xl)" "x"
+  streq "$(readlink -- yl)" "y"
+}
+
