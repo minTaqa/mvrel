@@ -53,10 +53,19 @@ cmd2var () {
     done
 }
 
+# Helper function. realpath seems to lack an argument to specify the
+# base for relative paths, so we have to do "cd"
+realpath_base () {
+  (cd "$1";
+    realpath -s -m -- "$2")
+}
+
 mv_one () {
   # The command arguments
   SRC=$1
   DST=$2
+  # DST must be a directory for now
+  # NEWSRC is the final path where SRC is moved to
   cmd2var -1 NEWSRC basename -- "$SRC"
   NEWSRC="$DST/$NEWSRC"
   dbg SRC=$SRC
@@ -91,38 +100,32 @@ mv_one () {
     cmd2var -1 NEWBASE dirname "$NEWSRC"
   fi
 
-  # Helper function. realpath seems to lack an argument to specify the
-  # base for relative paths, so we have to do "cd"
-  realpath_base () {
-    (cd "$1";
-      realpath -s -m -- "$2")
-  }
-
   verb Rewriting links
   # Rewrite all the links before moving
+  # read -d '' means use NUL termination, -r means don't interpret backslash
   find "$SRCR" -type l -print0 | while IFS= read -r -d '' i; do
-  # readlink -f worked OK but we actually want to allow linking to a
-  # symlink; in such cases it should only be dereferenced once, but
-  # readlink -f dereferences the entire chain. so we use readlink +
-  # realpath_base
-  #    cmd2var -1 RP readlink -f -- "$i"
-  cmd2var -1 di dirname -- "$i"
-  cmd2var -1 RL readlink -- "$i"
-  cmd2var -1 RP realpath_base "$di" "$RL"
-  if [[ "$RP" = "$SRCR"* ]]; then
-    dbg Under src
-  else
-    # need to strip first part of RP and use dirname after NEWBASE
-    # also use realpath -s and $RP below, not $i
-    cmd2var -1 PATHINSRC dirname "${i#"$SRCR"}"
+    # readlink -f worked OK but we actually want to allow linking to a
+    # symlink; in such cases it should only be dereferenced once, but
+    # readlink -f dereferences the entire chain. so we use readlink +
+    # realpath_base
+    #    cmd2var -1 RP readlink -f -- "$i"
+    cmd2var -1 di dirname -- "$i"
+    cmd2var -1 RL readlink -- "$i"
+    cmd2var -1 RP realpath_base "$di" "$RL"
+    if [[ "$RP" = "$SRCR"* ]]; then
+      dbg Link points under src
+    else
+      # need to strip first part of RP and use dirname after NEWBASE
+      # also use realpath -s and $RP below, not $i
+      cmd2var -1 PATHINSRC dirname "${i#"$SRCR"}"
 
-    # 16 Mar 2021 had to insert "/" between $NEWBASE and
-    # $PATHINSRC below in case both are "." (t02-mvrel-up)
-    cmd2var -1 NEWLINK realpath -s -m --relative-to "$NEWBASE/$PATHINSRC" -- "$RP"
-    dbg Outside SRC, rewriting $i as $NEWLINK
-    # -T makes it work if $i is directory
-    ln -sfT -- "$NEWLINK" "$i"
-  fi
+      # 16 Mar 2021 had to insert "/" between $NEWBASE and
+      # $PATHINSRC below in case both are "." (t02-mvrel-up)
+      cmd2var -1 NEWLINK realpath -s -m --relative-to "$NEWBASE/$PATHINSRC" -- "$RP"
+      dbg Link points outside SRC, rewriting $i as $NEWLINK
+      # -T makes it work if $i is directory
+      ln -sfT -- "$NEWLINK" "$i"
+    fi
   done
 
   verb Moving $SRC to $DST
