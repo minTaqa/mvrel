@@ -1,15 +1,9 @@
 #!/usr/bin/bats --tap
 # -*- mode: sh; -*-
 
-# 22 Feb 2019
+# 06 Nov 2023 Adapted from t/t00-mvrel-basic
 
 load testlib-common
-
-# TODO
-# \- now test single link
-# \- test strange characters
-# - test (implement) destination not directory
-# - test (implement) multiple sources
 
 basic_dirs () {
     mkdir foo
@@ -21,29 +15,35 @@ basic_dirs () {
 }
 
 
-@test "mvrel in PATH" {
-    which mvrel
+@test "cprel in PATH" {
+    which cprel
 }
 
 @test "fails on bad arguments" {
     basic_dirs
-    ! mvrel
-    ! mvrel foo
+    ! cprel
+    ! cprel foo
     # directory into file
-    ! mvrel foo bar
-    # directory into itself
-    ! mvrel foo foo
-    # directory into subdirectory
-    mkdir foo/b
-    ! mvrel foo foo/b
-
-    # mvrel foo foo/../baz
+    ! cprel foo bar
+    # don't overwrite self
+    ! cprel foo .
 
     # this command should have nonzero exit status because of na1 and
-    # na2, but it should also move foo into baz
+    # na2, but it should also copy foo into baz
     ! streq "$(readlink baz/foo/bar)" "../../bar"
-    ! mvrel na1 foo na2 foo/../baz
+    ! cprel na1 foo na2 foo/../baz
     streq "$(readlink baz/foo/bar)" "../../bar"
+    streq "$(readlink foo/bar)" "../bar"
+}
+
+@test "examples where mvrel fails but not cprel" {
+    basic_dirs
+    # directory into itself works
+    cprel foo foo
+    # directory into subdirectory works
+    mkdir foo/b
+    cprel foo foo/b
+    cprel foo foo/../baz
 }
 
 @test "test the setup" {
@@ -61,16 +61,20 @@ basic_dirs () {
     streq $(readlink baz/foo/qux) "flob"
 
     # move the directory higher
-    mvrel baz/foo .
+    cprel baz/foo .
     streq $(readlink foo/bar) "../bar"
-
-    # put it back
-    mvrel foo baz
+    # original still exists
     streq $(readlink baz/foo/bar) "../../bar"
 
-    # multiple levels (XXX should test this more)
+    # put it back
+#    mvrel foo baz
+
+    # multiple levels
     mkdir joe
-    mvrel baz joe
+    # mvrel baz joe
+    cprel baz joe
+    ! cprel baz joe
+    rm -rf baz
     streq $(readlink joe/baz/foo/bar) "../../../bar"
 
     # moving to ..
@@ -78,25 +82,27 @@ basic_dirs () {
     cd joe
     touch bob
     ln -sr bob baz/fred
-    mvrel baz ..
-    streq $(readlink ../baz/foo/bar) "../../bar"
-    streq $(readlink ../baz/fred) "../joe/bob"
-    streq $(readlink ../baz/tom) "../joe"
+    cprel baz ..
+    streq "$(readlink ../baz/foo/bar)" "../../bar"
+    ls -al ../baz/
+    streq "$(readlink ../baz/fred)" "../joe/bob"
+    streq "$(readlink ../baz/tom)" "../joe"
     cd ..
-
-#    rm -rf baz joe bar bob  # unnecessary
 }
 
-@test "test moving a symlink" {
+@test "test copying a symlink" {
     basic_dirs
     ln -s bar fred
-    mvrel fred baz
+    streq $(readlink fred) "bar"
+    cprel fred baz
     streq $(readlink baz/fred) "../bar"
+    streq $(readlink fred) "bar" # still there
+
     ln -s baz/fred tom
     mvrel foo baz
 
     # also test link to a link
-    mvrel tom baz/foo
+    cprel tom baz/foo
     streq $(readlink baz/foo/tom) "../fred"
 }
 
@@ -123,10 +129,10 @@ strange_dirs_test () {
     streq "$(readlink -- "$FOO/$QUX"; echo x)" "$FLOB"$'\nx'
     test -d "$BAZ"
     streq $(ls -- "$BAZ") ""
-    mvrel "$FOO" "$BAZ"
+    cprel "$FOO" "$BAZ"
     streq "$(readlink -- "$BAZ/$FOO/$BAR"; echo x)" "../../$BAR"$'\nx'
     streq "$(readlink -- "$BAZ/$FOO/$QUX"; echo x)" "$FLOB"$'\nx'
-    rm -rf -- "$BAZ" "$BAR"
+    rm -rf -- "$FOO" "$BAZ" "$BAR"
 }
 
 @test "test strange chars" {

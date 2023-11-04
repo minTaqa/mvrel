@@ -17,17 +17,21 @@
 
 # Answering https://unix.stackexchange.com/questions/485320/what-is-a-good-command-for-moving-a-directory-containing-relative-symbolic-links
 
-# 31 Jul 2023
+# 31 Jul 2023 Add support for multiple source files (more than two arguments)
 
-# Add support for multiple source files (more than two arguments)
+# 04 Nov 2023 Add copy mode (cprel). Change behavior to continue
+# rather than exiting when one file argument has an error.
 
 set -e
 
 die () { >&2 echo "$@"; exit 1; }
+warn () { >&2 echo "$@"; }
 
 if test "$#" -lt 2; then
     die Need at least two arguments
 fi
+
+ME=$(basename $0)
 
 # Comment or uncomment these to change verbosity
 dbg () { true; }
@@ -72,15 +76,18 @@ mv_one () {
   dbg DST=$DST
   dbg NEWSRC=$NEWSRC
 
+  # XXX 04 Nov 2023 could move this out of file loop
   if ! test -d "$DST"; then
-    die Second argument must be directory
+    warn Second argument must be directory
+    return 1
   fi
   if ! test -e "$SRC"; then
     # 15 Mar 2021 is this the right logic?
     if test -L "$SRC"; then
-      >&2 echo Warning: Source $SRC is a broken symlink
+      warn Warning: Source $SRC is a broken symlink
     else
-      die Source $SRC does not exist
+      warn Source $SRC does not exist
+      return 1
     fi
   fi
 
@@ -88,7 +95,8 @@ mv_one () {
   cmd2var -1 DSTR realpath -s -- "$DST"
 
   if [[ "$DSTR" = "$SRCR"* ]]; then
-    die Can\'t move directory into itself
+    warn Can\'t move directory into itself: "$DSTR"
+    return 1
   fi
 
   NEWBASE="$NEWSRC"
@@ -128,12 +136,46 @@ mv_one () {
     fi
   done
 
-  verb Moving $SRC to $DST
   mv -- "$SRC" "$DST"
 }
 
-dst="${@:$#}"
-for src in "${@:1:$#-1}"; do
-  mv_one "$src" "$dst"
-done
+cp_one () {
+  # 04 Nov 2023 copying is currently done by copying to a temporary
+  # destination in the same directory, then moving to the final
+  # destination. if we are doing an inter-device copy, this will be
+  # inefficient as it will include an extra copy. we could fix this by
+  # rewriting the copy functionality so that it duplicates more of the
+  # code in mv_one (copy first, then traverse the original tree and
+  # fixup the copy). low priority because we don't expect to use this
+  # for inter-device copies of trees with large files
+  SRC=$1
+  DST=$2
+  TSRC="$SRC.cprel.$RANDOM"
+  cmd2var -1 BTSRC basename -- "$TSRC"
+  cmd2var -1 BSRC basename -- "$SRC"
+  if test -e "$DST/$BSRC"; then
+    warn "$DST/$BSRC already exists"
+    return 1
+  fi
+  cp -a -- "$SRC" "$TSRC" || return 1
+  mv_one "$TSRC" "$DST" || return 1
+  dbg Renaming "$DST/$BTSRC" to "$DST/$BSRC"
+  mv -- "$DST/$BTSRC" "$DST/$BSRC" || return 1
+}
 
+dst="${@:$#}"
+if test $ME = 'mvrel'; then
+  HAD_ERR=0
+  for src in "${@:1:$#-1}"; do
+    verb Moving $src to $dst
+    mv_one "$src" "$dst" || HAD_ERR=1
+  done
+  exit $HAD_ERR
+else if test $ME = 'cprel'; then
+  for src in "${@:1:$#-1}"; do
+    verb Copying $src to $dst
+    cp_one "$src" "$dst" || HAD_ERR=1
+  done
+  exit $HAD_ERR
+else    die "Unknown script name (should be mvrel or cprel): $ME"
+fi; fi
