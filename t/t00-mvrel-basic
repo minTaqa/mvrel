@@ -59,6 +59,7 @@ basic_dirs () {
 
     # put it back
     mvrel foo baz
+    streq $(readlink baz/foo/bar) "../../bar"
 
     # multiple levels (XXX should test this more)
     mkdir joe
@@ -74,8 +75,9 @@ basic_dirs () {
     streq $(readlink ../baz/foo/bar) "../../bar"
     streq $(readlink ../baz/fred) "../joe/bob"
     streq $(readlink ../baz/tom) "../joe"
+    cd ..
 
-    rm -rf baz joe bar
+#    rm -rf baz joe bar bob  # unnecessary
 }
 
 @test "test moving a symlink" {
