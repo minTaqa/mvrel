@@ -28,4 +28,5 @@ Example:
 
 Done:
 
+- (4 Nov 2023) Add "copy" mode (if invoked as cprel)
 - (31 Jul 2023) Accept multiple source paths on command line, like "mv"
