@@ -136,7 +136,7 @@ mv_one () {
     fi
   done
 
-  mv -- "$SRC" "$DST"
+  mv -i -- "$SRC" "$DST"
 }
 
 cp_one () {
